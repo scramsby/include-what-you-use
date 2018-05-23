@@ -1520,7 +1520,6 @@ int main() {
   // IWYU: std::vector is...*<vector>
   // IWYU: I2_Enum is...*badinc-i2.h
   std::vector<I2_Enum> local_enum_vector;
-  // I2_Enum here is redundant but harmless.
   // IWYU: I2_Enum is...*badinc-i2.h
   // IWYU: std::vector is...*<vector>
   // IWYU: I21 is...*badinc-i2.h
@@ -1842,9 +1841,16 @@ int main() {
   H_TemplateFunction<I1_Class*>(&i1_class);
   H_TemplateFunction(&i1_class);
   // IWYU: I22 is...*badinc-i2.h
+  // IWYU: I1_Enum is...*badinc-i1.h
   h_templateclass2.static_out_of_line(I22);
   // IWYU: I22 is...*badinc-i2.h
+  // IWYU: I1_Enum is...*badinc-i1.h
+  h_templateclass2.static_inline(I22);
+  // IWYU: I22 is...*badinc-i2.h
   h_templateclass2.h_nested_struct.tplnested(I22);
+  // TODO: I1_Enum should be reported here as a full use but isn't,
+  // because we are not properly handling the dependent type FOO in
+  // the nested struct.
   // IWYU: I22 is...*badinc-i2.h
   h_templateclass2.h_nested_struct.static_tplnested(I22);
   // This should not cause warnings for the i2_class destructor
@@ -1945,9 +1951,9 @@ The full include-list for tests/cxx/badinc.cc:
 #include <new>  // for operator new
 #include <string>  // for basic_string, basic_string<>::iterator, operator+, string
 #include <typeinfo>  // for type_info
-#include "tests/cxx/badinc-d1.h"  // for D1CopyClassFn, D1Function, D1_Class, D1_CopyClass, D1_Enum, D1_Enum::D11, D1_I1_Typedef, D1_StructPtr, D1_Subclass, D1_TemplateClass, D1_TemplateStructWithDefaultParam, MACRO_CALLING_I4_FUNCTION
+#include "tests/cxx/badinc-d1.h"  // for D11, D1CopyClassFn, D1Function, D1_Class, D1_CopyClass, D1_Enum, D1_I1_Typedef, D1_StructPtr, D1_Subclass, D1_TemplateClass, D1_TemplateStructWithDefaultParam, MACRO_CALLING_I4_FUNCTION
 #include "tests/cxx/badinc-d4.h"  // for D4_ClassForOperator, operator<<
-#include "tests/cxx/badinc-i1.h"  // for EmptyDestructorClass, H_Class::H_Class_DefinedInI1, I1_And_I2_OverloadedFunction, I1_Base, I1_Class, I1_Class::NestedStruct, I1_ClassPtr, I1_Enum, I1_Enum::I11, I1_Enum::I12, I1_Enum::I13, I1_Function, I1_FunctionPtr, I1_I2_Class_Typedef, I1_MACRO_LOGGING_CLASS, I1_MACRO_SYMBOL_WITHOUT_VALUE, I1_MACRO_SYMBOL_WITH_VALUE, I1_MACRO_SYMBOL_WITH_VALUE0, I1_MACRO_SYMBOL_WITH_VALUE2, I1_ManyPtrStruct (ptr only), I1_MemberPtr, I1_NamespaceClass, I1_NamespaceStruct, I1_NamespaceTemplateFn, I1_OverloadedFunction, I1_PtrAndUseOnSameLine, I1_PtrDereferenceClass, I1_PtrDereferenceStatic, I1_PtrDereferenceStruct, I1_SiblingClass, I1_StaticMethod, I1_Struct, I1_Subclass, I1_SubclassesI2Class, I1_TemplateClass, I1_TemplateClass<>::I1_TemplateClass_int, I1_TemplateClassFwdDeclaredInD2 (ptr only), I1_TemplateFunction, I1_TemplateMethodOnlyClass, I1_TemplateSubclass, I1_Typedef, I1_TypedefOnly_Class, I1_TypedefOnly_Class<>::i, I1_Union, I1_UnnamedStruct, I1_UnusedNamespaceStruct (ptr only), I1_const_ptr, I2_OperatorDefinedInI1Class::operator<<, MACRO_CALLING_I6_FUNCTION, OperateOn, i1_GlobalFunction, i1_i1_classptr, i1_int, i1_int_global, i1_int_global2, i1_int_global2sub, i1_int_global3, i1_int_global3sub, i1_int_global4, i1_int_global4sub, i1_int_globalsub, i1_ns4, kI1ConstInt, operator==
+#include "tests/cxx/badinc-i1.h"  // for EmptyDestructorClass, H_Class::H_Class_DefinedInI1, I11, I12, I13, I1_And_I2_OverloadedFunction, I1_Base, I1_Class, I1_Class::NestedStruct, I1_ClassPtr, I1_Enum, I1_Function, I1_FunctionPtr, I1_I2_Class_Typedef, I1_MACRO_LOGGING_CLASS, I1_MACRO_SYMBOL_WITHOUT_VALUE, I1_MACRO_SYMBOL_WITH_VALUE, I1_MACRO_SYMBOL_WITH_VALUE0, I1_MACRO_SYMBOL_WITH_VALUE2, I1_ManyPtrStruct (ptr only), I1_MemberPtr, I1_NamespaceClass, I1_NamespaceStruct, I1_NamespaceTemplateFn, I1_OverloadedFunction, I1_PtrAndUseOnSameLine, I1_PtrDereferenceClass, I1_PtrDereferenceStatic, I1_PtrDereferenceStruct, I1_SiblingClass, I1_StaticMethod, I1_Struct, I1_Subclass, I1_SubclassesI2Class, I1_TemplateClass, I1_TemplateClass<>::I1_TemplateClass_int, I1_TemplateClassFwdDeclaredInD2 (ptr only), I1_TemplateFunction, I1_TemplateMethodOnlyClass, I1_TemplateSubclass, I1_Typedef, I1_TypedefOnly_Class, I1_TypedefOnly_Class<>::i, I1_Union, I1_UnnamedStruct, I1_UnusedNamespaceStruct (ptr only), I1_const_ptr, I2_OperatorDefinedInI1Class::operator<<, MACRO_CALLING_I6_FUNCTION, OperateOn, i1_GlobalFunction, i1_i1_classptr, i1_int, i1_int_global, i1_int_global2, i1_int_global2sub, i1_int_global3, i1_int_global3sub, i1_int_global4, i1_int_global4sub, i1_int_globalsub, i1_ns4, kI1ConstInt, operator==
 #include "tests/cxx/badinc2.c"
 class D2_Class;
 class D2_ForwardDeclareClass;

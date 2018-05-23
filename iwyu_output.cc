@@ -43,6 +43,7 @@ using clang::CXXMethodDecl;
 using clang::CXXRecordDecl;
 using clang::Decl;
 using clang::DeclContext;
+using clang::EnumDecl;
 using clang::FileEntry;
 using clang::FunctionDecl;
 using clang::NamedDecl;
@@ -210,6 +211,12 @@ string GetShortNameAsString(const clang::NamedDecl* named_decl) {
         ostream << *record_decl << "::";
     } else if (const FunctionDecl *function_decl = DynCastFrom(*it)) {
       ostream << *function_decl << "::";   // could also add in '<< "()"'
+    } else if (const EnumDecl* enum_decl = DynCastFrom(*it)) {
+      if (enum_decl->isScoped()) {
+        ostream << *(cast<NamedDecl>(*it)) << "::";
+      } else {
+        // Don't add a scope prefix for old-style unscoped enums.
+      }
     } else {
       ostream << *(cast<NamedDecl>(*it)) << "::";
     }
@@ -230,7 +237,7 @@ string GetShortNameAsString(const clang::NamedDecl* named_decl) {
 
 // Holds information about a single full or fwd-decl use of a symbol.
 OneUse::OneUse(const NamedDecl* decl, SourceLocation use_loc,
-               OneUse::UseKind use_kind, bool in_cxx_method_body,
+               OneUse::UseKind use_kind, UseFlags flags,
                const char* comment)
     : symbol_name_(internal::GetQualifiedNameAsString(decl)),
       short_symbol_name_(internal::GetShortNameAsString(decl)),
@@ -240,7 +247,7 @@ OneUse::OneUse(const NamedDecl* decl, SourceLocation use_loc,
       decl_filepath_(GetFilePath(decl_file_)),
       use_loc_(use_loc),
       use_kind_(use_kind),             // full use or fwd-declare use
-      in_cxx_method_body_(in_cxx_method_body),
+      use_flags_(flags),
       comment_(comment ? comment : ""),
       ignore_use_(false),
       is_iwyu_violation_(false) {
@@ -256,7 +263,7 @@ OneUse::OneUse(const string& symbol_name, const FileEntry* dfn_file,
       decl_filepath_(dfn_filepath),
       use_loc_(use_loc),
       use_kind_(kFullUse),
-      in_cxx_method_body_(false),
+      use_flags_(UF_None),
       ignore_use_(false),
       is_iwyu_violation_(false) {
   // Sometimes dfn_filepath is actually a fully quoted include.  In
@@ -567,13 +574,18 @@ static void LogSymbolUse(const string& prefix, const OneUse& use) {
 
 void IwyuFileInfo::ReportFullSymbolUse(SourceLocation use_loc,
                                        const NamedDecl* decl,
-                                       bool in_cxx_method_body,
+                                       UseFlags flags,
                                        const char* comment) {
   if (decl) {
     // Since we need the full symbol, we need the decl's definition-site.
-    decl = GetDefinitionAsWritten(decl);
+    // But only if we're not defining the function, in which case we want to use
+    // all its preceding declarations, and not try to canonicalize.
+    if (!(flags & UF_FunctionDfn)) {
+      decl = GetDefinitionAsWritten(decl);
+    }
+
     symbol_uses_.push_back(OneUse(decl, use_loc, OneUse::kFullUse,
-                                  in_cxx_method_body, comment));
+                                  flags, comment));
     LogSymbolUse("Marked full-info use of decl", symbol_uses_.back());
   }
 }
@@ -610,7 +622,7 @@ void IwyuFileInfo::ReportKnownDesiredFile(const FileEntry* included_file) {
 
 void IwyuFileInfo::ReportForwardDeclareUse(SourceLocation use_loc,
                                            const NamedDecl* decl,
-                                           bool in_cxx_method_body,
+                                           UseFlags flags,
                                            const char* comment) {
   if (!decl)
     return;
@@ -619,13 +631,13 @@ void IwyuFileInfo::ReportForwardDeclareUse(SourceLocation use_loc,
   // happened here, replace the friend with a real fwd decl.
   decl = GetNonfriendClassRedecl(decl);
   symbol_uses_.push_back(OneUse(decl, use_loc, OneUse::kForwardDeclareUse,
-                                in_cxx_method_body, comment));
+                                flags, comment));
   LogSymbolUse("Marked fwd-decl use of decl", symbol_uses_.back());
 }
 
 void IwyuFileInfo::ReportUsingDeclUse(SourceLocation use_loc,
                                       const UsingDecl* using_decl,
-                                      bool in_cxx_method_body,
+                                      UseFlags flags,
                                       const char* comment) {  
   // If accessing a symbol through a using decl in the same file that contains
   // the using decl, we must mark the using decl as referenced. At the end of
@@ -641,7 +653,7 @@ void IwyuFileInfo::ReportUsingDeclUse(SourceLocation use_loc,
   // When a symbol is accessed through a using decl, we must report
   // that as a full use of the using decl because whatever file that
   // using decl is in is now required.
-  ReportFullSymbolUse(use_loc, using_decl, in_cxx_method_body, comment);
+  ReportFullSymbolUse(use_loc, using_decl, flags, comment);
 }
 
 // Given a collection of symbol-uses for symbols defined in various
@@ -874,6 +886,7 @@ set<string> CalculateMinimalIncludes(
 // A6) If any of the redeclarations of this declaration is in the same
 //     file as the use (and before it), and is actually a definition,
 //     discard the forward-declare use.
+// A7) If --no_fwd_decls has been passed, recategorize as a full use.
 
 // Trimming symbol uses (1st pass):
 // B1) If the definition of a full use comes after the use, change the
@@ -1032,6 +1045,11 @@ void ProcessForwardDeclare(OneUse* use,
       return;
     }
   }
+
+  // (A7) If --no_fwd_decls has been passed, recategorize as a full use.
+  if (GlobalFlags().no_fwd_decls) {
+    use->set_full_use();
+  }
 }
 
 void ProcessFullUse(OneUse* use,
@@ -1082,18 +1100,23 @@ void ProcessFullUse(OneUse* use,
   // definition from iwyu's point of view.)  We don't bother with
   // RedeclarableTemplate<> types (FunctionTemplateDecl), since for
   // those types, iwyu *does* care about the definition vs declaration.
-  set<const NamedDecl*> all_redecls;
-  if (isa<RecordDecl>(use->decl()) || isa<ClassTemplateDecl>(use->decl()))
-    all_redecls.insert(use->decl());    // for classes, just consider the dfn
-  else
-    all_redecls = GetNonclassRedecls(use->decl());
-  for (const NamedDecl* redecl : all_redecls) {
-    if (DeclIsVisibleToUseInSameFile(redecl, *use)) {
-      VERRS(6) << "Ignoring use of " << use->symbol_name()
-               << " (" << use->PrintableUseLoc() << "): definition is present: "
-               << PrintableLoc(GetLocation(use->decl())) << "\n";
-      use->set_ignore_use();
-      return;
+  // All this is moot when FunctionDecls are being defined, all their redecls
+  // are separately registered as uses so that a definition anchors all its
+  // declarations.
+  if (!use->is_function_being_defined()) {
+    set<const NamedDecl*> all_redecls;
+    if (isa<RecordDecl>(use->decl()) || isa<ClassTemplateDecl>(use->decl()))
+      all_redecls.insert(use->decl());  // for classes, just consider the dfn
+    else
+      all_redecls = GetNonclassRedecls(use->decl());
+    for (const NamedDecl* redecl : all_redecls) {
+      if (DeclIsVisibleToUseInSameFile(redecl, *use)) {
+        VERRS(6) << "Ignoring use of " << use->symbol_name() << " ("
+                 << use->PrintableUseLoc() << "): definition is present: "
+                 << PrintableLoc(GetLocation(use->decl())) << "\n";
+        use->set_ignore_use();
+        return;
+      }
     }
   }
 
@@ -1348,8 +1371,7 @@ void CalculateIwyuForForwardDeclareUse(
 }
 
 void CalculateIwyuForFullUse(OneUse* use,
-                             const set<string>& actual_includes,
-                             const set<string>& desired_includes) {
+                             const set<string>& actual_includes) {
   CHECK_(!use->ignore_use() && "Trying to calculate on an ignored use");
   CHECK_(use->is_full_use() && "CalculateIwyuForFullUse requires a full use");
   CHECK_(use->has_suggested_header() && "All full uses must have a header");
@@ -1439,7 +1461,7 @@ void IwyuFileInfo::CalculateIwyuViolations(vector<OneUse>* uses) {
       = Union(associated_direct_includes, direct_includes());
 
   // (C2) + (C3) Find the minimal 'set cover' for all symbol uses.
-  const set<string>& desired_set_cover = internal::CalculateMinimalIncludes(
+  const set<string> desired_set_cover = internal::CalculateMinimalIncludes(
       direct_includes(), associated_direct_includes, uses);
 
   // (C4) Remove .cc files from desired-includes unless they're in actual-inc.
@@ -1467,8 +1489,7 @@ void IwyuFileInfo::CalculateIwyuViolations(vector<OneUse>* uses) {
           &use, effective_direct_includes, effective_desired_includes,
           AssociatedFileEntries());
     } else {
-      internal::CalculateIwyuForFullUse(
-          &use, effective_direct_includes, effective_desired_includes);
+      internal::CalculateIwyuForFullUse(&use, effective_direct_includes);
     }
   }
 }
@@ -1983,7 +2004,7 @@ void IwyuFileInfo::ResolvePendingAnalysis() {
       if (using_decl->shadow_size() > 0) {
         ReportForwardDeclareUse(using_decl->getUsingLoc(),
                                 using_decl->shadow_begin()->getTargetDecl(),
-                                /* in_cxx_method_body */ false,
+                                /* flags */ UF_None,
                                 "(for un-referenced using)");
       }
     }
