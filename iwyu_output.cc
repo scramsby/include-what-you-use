@@ -1787,12 +1787,6 @@ enum class LineSortOrdinal : int {
   kForwardDeclaration
 };
 
-template <typename T>
-typename std::underlying_type<T>::type underlying_cast(T val) {
-  static_assert(std::is_enum<T>::value, "underlying_cast only works with enums");
-  return static_cast<typename std::underlying_type<T>::type>(val);
-}
-
 LineSortOrdinal GetLineSortOrdinal(const OneIncludeOrForwardDeclareLine& line,
                                    const set<string>& associated_quoted_includes,
                                    const IwyuFileInfo* file_info) {
@@ -1822,7 +1816,7 @@ LineSortKey GetSortKey(const OneIncludeOrForwardDeclareLine& line,
                        const set<string>& associated_quoted_includes,
                        const IwyuFileInfo* file_info) {
   const auto sortOrdinal = GetLineSortOrdinal(line, associated_quoted_includes, file_info);
-  return LineSortKey(underlying_cast(sortOrdinal), line.line());
+  return LineSortKey(static_cast<LineSortKey>(sortOrdinal), line.line());
 }
 
 // filename is "this" filename: the file being emitted.
