@@ -1774,18 +1774,18 @@ OutputLine PrintableIncludeOrForwardDeclareLine(
     GetSymbolsSortedByFrequency(line.symbol_counts()));
 }
 
-typedef pair<int, string> LineSortKey;
-
-enum class LineSortOrdinal : int {
+enum class LineSortOrdinal {
   kPrecompiledHeader,
   kAssociatedHeader,
   kAssociatedInlineDefinitions,
-  kProjectLocalHeader,
+  kQuotedHeader,
   kCHeader,
   kCppHeader,
   kOtherHeader,
   kForwardDeclaration
 };
+
+using LineSortKey = pair<LineSortOrdinal, string>;
 
 LineSortOrdinal GetLineSortOrdinal(const OneIncludeOrForwardDeclareLine& line,
                                    const set<string>& associated_quoted_includes,
@@ -1801,8 +1801,8 @@ LineSortOrdinal GetLineSortOrdinal(const OneIncludeOrForwardDeclareLine& line,
       return LineSortOrdinal::kAssociatedInlineDefinitions;
     return LineSortOrdinal::kAssociatedHeader;
   }
-  if (EndsWith(quotedInclude, "\""))
-    return LineSortOrdinal::kProjectLocalHeader;
+  if (GlobalFlags().quoted_headers_first && EndsWith(quotedInclude, "\""))
+    return LineSortOrdinal::kQuotedHeader;
   if (EndsWith(quotedInclude, ".h>"))
     return LineSortOrdinal::kCHeader;
   if (EndsWith(quotedInclude, ">"))
@@ -1815,8 +1815,7 @@ LineSortOrdinal GetLineSortOrdinal(const OneIncludeOrForwardDeclareLine& line,
 LineSortKey GetSortKey(const OneIncludeOrForwardDeclareLine& line,
                        const set<string>& associated_quoted_includes,
                        const IwyuFileInfo* file_info) {
-  const auto sortOrdinal = GetLineSortOrdinal(line, associated_quoted_includes, file_info);
-  return LineSortKey(static_cast<LineSortKey>(sortOrdinal), line.line());
+  return LineSortKey(GetLineSortOrdinal(line, associated_quoted_includes, file_info), line.line());
 }
 
 // filename is "this" filename: the file being emitted.
