@@ -114,6 +114,7 @@ class OneUse {
   string suggested_header_;        // header that allows us to satisfy use
   bool ignore_use_;                // set to true if use is discarded
   bool is_iwyu_violation_;         // set to false when we figure out it's not
+  string printable_use_loc_;
 };
 
 class OneIncludeOrForwardDeclareLine {
@@ -157,7 +158,12 @@ class OneIncludeOrForwardDeclareLine {
   }
 
   void set_present() { is_present_ = true; }
-  void set_desired() { is_desired_ = true; }
+  void set_desired() {
+      is_desired_ = true;
+      if (quoted_include() == "<map>") {
+          __debugbreak();
+      }
+  }
   void clear_desired() { is_desired_ = false; }
   void clear_line_numbers() { start_linenum_ = end_linenum_ = -1; }
   // Another symbol we're using that's defined in this file.

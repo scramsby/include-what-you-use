@@ -251,6 +251,7 @@ OneUse::OneUse(const NamedDecl* decl, SourceLocation use_loc,
       comment_(comment ? comment : ""),
       ignore_use_(false),
       is_iwyu_violation_(false) {
+  printable_use_loc_ = PrintableUseLoc();
 }
 
 // This constructor always creates a full use.
@@ -272,6 +273,8 @@ OneUse::OneUse(const string& symbol_name, const FileEntry* dfn_file,
   CHECK_(!decl_filepath_.empty() && "Must pass a real filepath to OneUse");
   if (decl_filepath_[0] == '"' || decl_filepath_[0] == '<')
     suggested_header_ = decl_filepath_;
+
+  printable_use_loc_ = PrintableUseLoc();
 }
 
 void OneUse::reset_decl(const clang::NamedDecl* decl) {
